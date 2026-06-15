@@ -88,12 +88,12 @@ Available tables: Projects, Tasks, People, Comments, TimeEntries, Enterprises, M
 Use selector for filtering with AppSheet expressions:
   - All records: omit selector
   - By field value: Filter(Tasks, [Status] = "In Progress")
-  - By Ref key: Filter(Tasks, [AssigneeEmail] = "jair@wearemanna.org")
+  - By Ref key: Filter(Tasks, [AssigneeEmail] = "1WJL371ol74AqTdx-Uk_87")
   - By date range: Filter(TimeEntries, AND([CreatedAt] >= "2024-01-01", [CreatedAt] <= "2024-12-31"))
   - By project: Filter(Tasks, [ProjectID] = "<exact-id-from-get_projects>")
 
 NOTE on Ref columns: AppSheet Ref columns store the key of the referenced table.
-  - Tasks.AssigneeEmail → People: stored value IS the person's email string
+  - Tasks.AssigneeEmail → People: stored value IS the person's Row ID (not their email address)
   - Tasks.ProjectID → Projects: stored value is the exact ProjectID (use get_projects to find it)`,
     inputSchema: {
       type: "object",
@@ -593,7 +593,18 @@ async function handleLogTime(args: {
 }
 
 async function handleGetMyTasks(args: { assignee_email: string; status?: string; project_id?: string }) {
-  const filters = [`[AssigneeEmail] = "${args.assignee_email}"`];
+  const peopleResult = (await handleFindPerson({ query: args.assignee_email })) as Record<string, unknown>[];
+  if (!Array.isArray(peopleResult) || peopleResult.length === 0) {
+    throw new Error(`Could not find person with email: ${args.assignee_email}`);
+  }
+  
+  const person = peopleResult[0];
+  const rowId = person["Row ID"];
+  if (!rowId) {
+    throw new Error(`Could not find Row ID for person with email: ${args.assignee_email}`);
+  }
+
+  const filters = [`[AssigneeEmail] = "${rowId}"`];
   if (args.status)     filters.push(`[Status] = "${args.status}"`);
   if (args.project_id) filters.push(`[ProjectID] = "${args.project_id}"`);
   return appsheetAction("Tasks", "Find", [], { Selector: buildSelector("Tasks", filters) });
