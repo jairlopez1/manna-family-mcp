@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import "dotenv/config";
+import { execSync } from "child_process";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import {
@@ -13,6 +14,23 @@ import {
 const APP_ID = process.env.APPSHEET_APP_ID ?? "d39f2089-f7d8-4177-a068-321b1174a305";
 const ACCESS_KEY = process.env.APPSHEET_ACCESS_KEY ?? "";
 const BASE_URL = `https://api.appsheet.com/api/v2/apps/${APP_ID}/tables`;
+
+let cachedUserEmail: string | null | undefined = undefined;
+
+function getCurrentUserEmail(): string | null {
+  if (cachedUserEmail !== undefined) return cachedUserEmail;
+  try {
+    const email = execSync("git config user.email", { encoding: "utf8" }).trim();
+    if (email && email.includes("@")) {
+      cachedUserEmail = email;
+      return email;
+    }
+  } catch {
+    // ignore
+  }
+  cachedUserEmail = null;
+  return null;
+}
 
 const ALL_TABLES = [
   "Projects", "Tasks", "People", "Comments", "TimeEntries",
@@ -172,6 +190,51 @@ Read-only — never write: TimeFacts, PTO_Policy, OrgHolidays, Resources`,
 
   // ── High-level convenience tools ─────────────────────────────────────────
   {
+    name: "get_current_user",
+    description: "Retrieve the email and database profile of the currently logged-in developer based on local Git configuration.",
+    inputSchema: {
+      type: "object",
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "start_timer",
+    description: "Start a time tracking timer on a specific task. Throws an error if there is already an active running timer.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "The TaskID to start the timer on" },
+        description: { type: "string", description: "What you are working on (optional)" },
+        created_by: { type: "string", description: "Email of the person starting the timer. Defaults to current user if omitted." },
+      },
+      required: ["task_id"],
+    },
+  },
+  {
+    name: "stop_timer",
+    description: "Stop the active running timer for the current user and calculate the elapsed duration.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "Stop the timer for this specific TaskID (optional). If omitted, stops the user's active timer." },
+        description: { type: "string", description: "Update/set the description of what was done (optional)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_daily_digest",
+    description: "Retrieve a summary of the user's day: open tasks, today's schedule, and hours logged today.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        user_email: { type: "string", description: "Filter digest by email. Defaults to current user if omitted." },
+      },
+      required: [],
+    },
+  },
+  {
     name: "find_person",
     description: `Look up a person in the People table by name or email. Use this FIRST when:
   - The user refers to someone by name (e.g. "Jair", "Sarah") and you need their email
@@ -220,15 +283,15 @@ STEP-BY-STEP:
   c. Confirm project with user, use exact ProjectID from get_projects
   d. Call create_task with all confirmed values
 
-IMPORTANT: AssigneeEmail → People. Pass email. Use find_person if you only have a name.
+IMPORTANT: AssigneeEmail → People. Pass email or name. Use find_person if you only have a name.
 IMPORTANT: ProjectID may be a UUID — never invent one. Always get it from get_projects.`,
     inputSchema: {
       type: "object",
       properties: {
         task_name: { type: "string" },
-        created_by: { type: "string", description: "Email of creator (People.Email). Ask if unknown." },
+        created_by: { type: "string", description: "Email of creator (People.Email). Defaults to current user if omitted." },
         project_id: { type: "string", description: "Exact ProjectID from get_projects — never guess" },
-        assignee_email: { type: "string", description: "Email to assign to (Ref → People)" },
+        assignee_email: { type: "string", description: "Email or name to assign to (Ref → People)" },
         due_date: { type: "string", description: "Due date YYYY-MM-DD (optional)" },
         priority: { type: "string", enum: ["High", "Medium", "Low"], description: "Column is spelled 'Prority' internally (AppSheet typo)" },
         status: { type: "string", enum: ["To Do", "In Progress", "Blocked", "Completed"], description: "Defaults to To Do" },
@@ -237,7 +300,7 @@ IMPORTANT: ProjectID may be a UUID — never invent one. Always get it from get_
         mission_id: { type: "string", description: "MissionID to link to a mission (optional)" },
         task_type: { type: "string", description: "Task type tag from Task Type column (optional)" },
       },
-      required: ["task_name", "created_by"],
+      required: ["task_name"],
     },
   },
   {
@@ -256,11 +319,11 @@ If you only have a task name (not a TaskID), call find_records on Tasks first:
         task_id: { type: "string", description: "TaskID. Use find_records on Tasks if you only have the task name." },
         duration_minutes: { type: "number", description: "Total minutes worked" },
         description: { type: "string", description: "What was done" },
-        created_by: { type: "string", description: "Email of person logging time (People.Email). Ask if unknown." },
+        created_by: { type: "string", description: "Email of person logging time (People.Email). Defaults to current user if omitted." },
         start_at: { type: "string", description: "Start datetime YYYY-MM-DD HH:MM:SS (optional)" },
         end_at: { type: "string", description: "End datetime YYYY-MM-DD HH:MM:SS (optional)" },
       },
-      required: ["task_id", "duration_minutes", "created_by"],
+      required: ["task_id", "duration_minutes"],
     },
   },
   {
@@ -276,11 +339,11 @@ project_id is optional — use get_projects to find the correct ID.`,
     inputSchema: {
       type: "object",
       properties: {
-        assignee_email: { type: "string", description: "Email of the person (People.Email)" },
+        assignee_email: { type: "string", description: "Email of the person (People.Email). Defaults to current user if omitted." },
         status: { type: "string", enum: ["To Do", "In Progress", "Blocked", "Completed"], description: "Filter by status (optional)" },
         project_id: { type: "string", description: "Filter by ProjectID (optional — use get_projects to find it)" },
       },
-      required: ["assignee_email"],
+      required: [],
     },
   },
   {
@@ -358,9 +421,9 @@ Returns: PTO_Balance_Current, PTO_Accrued_YTD, PTO_Used_YTD, AnnualPTO_AdjustedD
     inputSchema: {
       type: "object",
       properties: {
-        email: { type: "string", description: "Email address of the person (People.Email)" },
+        email: { type: "string", description: "Email address of the person (People.Email). Defaults to current user if omitted." },
       },
-      required: ["email"],
+      required: [],
     },
   },
   {
@@ -416,7 +479,7 @@ Requester → People (pass email). For CompTime, include comp_time_travel_days i
     inputSchema: {
       type: "object",
       properties: {
-        requester_email: { type: "string", description: "Email of requester (People.Email)" },
+        requester_email: { type: "string", description: "Email of requester (People.Email). Defaults to current user if omitted." },
         type: { type: "string", enum: ["PTO", "CompTime", "Sick", "Unpaid"] },
         start_date: { type: "string", description: "Start date YYYY-MM-DD" },
         end_date: { type: "string", description: "End date YYYY-MM-DD" },
@@ -427,7 +490,7 @@ Requester → People (pass email). For CompTime, include comp_time_travel_days i
         comp_time_travel_days: { type: "number", description: "Travel days for CompTime requests (optional)" },
         request_id: { type: "string", description: "Custom RequestID (optional)" },
       },
-      required: ["requester_email", "type", "start_date", "end_date", "day_count"],
+      required: ["type", "start_date", "end_date", "day_count"],
     },
   },
   {
@@ -489,7 +552,7 @@ All filters are optional.`,
     inputSchema: {
       type: "object",
       properties: {
-        user_email: { type: "string", description: "Filter by event owner's email" },
+        user_email: { type: "string", description: "Filter by event owner's email. Defaults to current user if omitted." },
         from_date: { type: "string", description: "Filter events starting on or after this date YYYY-MM-DD" },
         to_date: { type: "string", description: "Filter events starting on or before this date YYYY-MM-DD" },
         project_id: { type: "string", description: "Filter by AI-suggested ProjectID_Suggested (optional)" },
@@ -537,6 +600,20 @@ async function handleFindPerson(args: { query: string }) {
   return appsheetAction("People", "Find", [], { Selector: selector });
 }
 
+async function resolvePeopleRowId(queryOrEmail: string): Promise<string> {
+  if (!queryOrEmail) return "";
+  try {
+    const people = await handleFindPerson({ query: queryOrEmail }) as Record<string, unknown>[];
+    if (people && people.length > 0) {
+      const rowId = people[0]["Row ID"] as string;
+      if (rowId) return rowId;
+    }
+  } catch {
+    // ignore
+  }
+  return queryOrEmail;
+}
+
 async function handleGetProjects(args: { status?: string; name_search?: string }) {
   const filters: string[] = [];
   if (args.status) filters.push(`[Status] = "${args.status}"`);
@@ -548,20 +625,26 @@ async function handleGetProjects(args: { status?: string; name_search?: string }
 }
 
 async function handleCreateTask(args: {
-  task_name: string; created_by: string; project_id?: string;
+  task_name: string; created_by?: string; project_id?: string;
   assignee_email?: string; due_date?: string; priority?: string;
   status?: string; task_id?: string; repeat?: string;
   mission_id?: string; task_type?: string;
 }) {
+  const createdBy = args.created_by || getCurrentUserEmail();
+  if (!createdBy) {
+    throw new Error("created_by is required (and could not be automatically detected).");
+  }
   const row: Record<string, unknown> = {
     TaskName: args.task_name,
     Status: args.status ?? "To Do",
-    CreatedBy: args.created_by,
+    CreatedBy: createdBy,
     CreatedAt: nowIso(),
   };
   if (args.task_id)       row.TaskID        = args.task_id;
   if (args.project_id)    row.ProjectID     = args.project_id;
-  if (args.assignee_email) row.AssigneeEmail = args.assignee_email;
+  if (args.assignee_email) {
+    row.AssigneeEmail = await resolvePeopleRowId(args.assignee_email);
+  }
   if (args.due_date)      row.DueDate       = args.due_date;
   if (args.priority)      row.Prority       = args.priority; // AppSheet typo preserved
   if (args.repeat)        row["Repeat?"]    = args.repeat;
@@ -572,8 +655,12 @@ async function handleCreateTask(args: {
 
 async function handleLogTime(args: {
   task_id: string; duration_minutes: number; description?: string;
-  created_by: string; start_at?: string; end_at?: string;
+  created_by?: string; start_at?: string; end_at?: string;
 }) {
+  const createdBy = args.created_by || getCurrentUserEmail();
+  if (!createdBy) {
+    throw new Error("created_by is required (and could not be automatically detected).");
+  }
   const now = new Date();
   const endAt = args.end_at ?? nowIso();
   const startAt = args.start_at ?? new Date(now.getTime() - args.duration_minutes * 60_000)
@@ -587,23 +674,17 @@ async function handleLogTime(args: {
     EndAt: endAt,
     DurationMinutes: args.duration_minutes,
     CreatedAt: endAt,
-    CreatedBy: args.created_by,
+    CreatedBy: createdBy,
     Method: "Manual",
   }]);
 }
 
-async function handleGetMyTasks(args: { assignee_email: string; status?: string; project_id?: string }) {
-  const peopleResult = (await handleFindPerson({ query: args.assignee_email })) as Record<string, unknown>[];
-  if (!Array.isArray(peopleResult) || peopleResult.length === 0) {
-    throw new Error(`Could not find person with email: ${args.assignee_email}`);
+async function handleGetMyTasks(args: { assignee_email?: string; status?: string; project_id?: string }) {
+  const email = args.assignee_email || getCurrentUserEmail();
+  if (!email) {
+    throw new Error("assignee_email is required (and could not be automatically detected).");
   }
-  
-  const person = peopleResult[0];
-  const rowId = person["Row ID"];
-  if (!rowId) {
-    throw new Error(`Could not find Row ID for person with email: ${args.assignee_email}`);
-  }
-
+  const rowId = await resolvePeopleRowId(email);
   const filters = [`[AssigneeEmail] = "${rowId}"`];
   if (args.status)     filters.push(`[Status] = "${args.status}"`);
   if (args.project_id) filters.push(`[ProjectID] = "${args.project_id}"`);
@@ -647,8 +728,12 @@ async function handleGetTaskDetail(args: { task_id: string }) {
   return { task, comments, timeEntries };
 }
 
-async function handleGetPtoBalance(args: { email: string }) {
-  const selector = `Filter(People, [Email] = "${args.email}")`;
+async function handleGetPtoBalance(args: { email?: string }) {
+  const email = args.email || getCurrentUserEmail();
+  if (!email) {
+    throw new Error("email is required (and could not be automatically detected).");
+  }
+  const selector = `Filter(People, [Email] = "${email}")`;
   return appsheetAction("People", "Find", [], { Selector: selector });
 }
 
@@ -681,15 +766,19 @@ async function handleGetTeamWorkload(args: { status?: string; project_id?: strin
 }
 
 async function handleSubmitPtoRequest(args: {
-  requester_email: string; type: string; start_date: string;
+  requester_email?: string; type: string; start_date: string;
   end_date: string; day_count: number; reason?: string;
   emergency?: boolean; half_portion?: string;
   comp_time_travel_days?: number; request_id?: string;
 }) {
+  const requesterEmail = args.requester_email || getCurrentUserEmail();
+  if (!requesterEmail) {
+    throw new Error("requester_email is required (and could not be automatically detected).");
+  }
   const requestId = args.request_id ?? `PTO${Date.now().toString().slice(-8)}`;
   return appsheetAction("PTO_Requests", "Add", [{
     RequestID: requestId,
-    Requester: args.requester_email,
+    Requester: requesterEmail,
     Type: args.type,
     StartDate: args.start_date,
     EndDate: args.end_date,
@@ -732,8 +821,9 @@ async function handleGetPtoPolicy(args: { position?: string }) {
 async function handleGetCalendarEvents(args: {
   user_email?: string; from_date?: string; to_date?: string; project_id?: string;
 }) {
+  const email = args.user_email || getCurrentUserEmail();
   const filters: string[] = [];
-  if (args.user_email)  filters.push(`[UserEmail] = "${args.user_email}"`);
+  if (email)            filters.push(`[UserEmail] = "${email}"`);
   if (args.from_date)   filters.push(`[StartAt] >= "${args.from_date}"`);
   if (args.to_date)     filters.push(`[StartAt] <= "${args.to_date}"`);
   if (args.project_id)  filters.push(`[ProjectID_Suggested] = "${args.project_id}"`);
@@ -743,10 +833,143 @@ async function handleGetCalendarEvents(args: {
   return appsheetAction("CalendarEvents", "Find", [], properties);
 }
 
+async function handleGetCurrentUser() {
+  const email = getCurrentUserEmail();
+  if (!email) {
+    return { email: null, profile: null };
+  }
+  try {
+    const people = await handleFindPerson({ query: email }) as Record<string, unknown>[];
+    if (people && people.length > 0) {
+      return { email, profile: people[0] };
+    }
+  } catch {
+    // ignore
+  }
+  return { email, profile: null };
+}
+
+async function handleStartTimer(args: { task_id: string; description?: string; created_by?: string }) {
+  const createdBy = args.created_by || getCurrentUserEmail();
+  if (!createdBy) {
+    throw new Error("created_by email is required (and could not be automatically detected).");
+  }
+
+  // Check if there's already an active running timer for this user
+  const checkSel = `Filter(TimeEntries, AND([CreatedBy] = "${createdBy}", ISBLANK([EndAt])))`;
+  const openTimers = await appsheetAction("TimeEntries", "Find", [], { Selector: checkSel }) as Record<string, unknown>[];
+  if (Array.isArray(openTimers) && openTimers.length > 0) {
+    throw new Error(`You already have a running timer on task "${openTimers[0].TaskID}". Stop it first.`);
+  }
+
+  const startAt = nowIso();
+  const timeEntryId = `TE${Date.now().toString().slice(-8)}`;
+  return appsheetAction("TimeEntries", "Add", [{
+    TimeEntryID: timeEntryId,
+    TaskID: args.task_id,
+    EntryDescription: args.description ?? "",
+    StartAt: startAt,
+    EndAt: "",
+    DurationMinutes: 0,
+    CreatedAt: startAt,
+    CreatedBy: createdBy,
+    Method: "Timer",
+  }]);
+}
+
+async function handleStopTimer(args: { task_id?: string; description?: string }) {
+  const email = getCurrentUserEmail();
+  if (!email) {
+    throw new Error("Could not detect current user email to stop active timer.");
+  }
+
+  // Find the user's active timer
+  const filters = [
+    `[CreatedBy] = "${email}"`,
+    `ISBLANK([EndAt])`
+  ];
+  if (args.task_id) {
+    filters.push(`[TaskID] = "${args.task_id}"`);
+  }
+
+  const checkSel = buildSelector("TimeEntries", filters);
+  const openTimers = await appsheetAction("TimeEntries", "Find", [], { Selector: checkSel }) as Record<string, unknown>[];
+  if (!Array.isArray(openTimers) || openTimers.length === 0) {
+    throw new Error("No active timer found to stop.");
+  }
+
+  const activeTimer = openTimers[0];
+  const startAtStr = activeTimer.StartAt as string;
+  
+  // AppSheet date format is MM/DD/YYYY HH:MM:SS or YYYY-MM-DD HH:MM:SS. We need to normalize it for JS parsing.
+  // Standard format from nowIso() is "YYYY-MM-DD HH:MM:SS" which JS Date can parse if we change space to 'T' or let JS parse it.
+  const startAt = new Date(startAtStr.replace(" ", "T"));
+  const now = new Date();
+  
+  let duration = 0;
+  if (!isNaN(startAt.getTime())) {
+    duration = Math.max(1, Math.round((now.getTime() - startAt.getTime()) / 60_000));
+  }
+
+  const updates: Record<string, unknown> = {
+    TimeEntryID: activeTimer.TimeEntryID,
+    EndAt: nowIso(),
+    DurationMinutes: duration,
+  };
+  if (args.description !== undefined) {
+    updates.EntryDescription = args.description;
+  }
+
+  return appsheetAction("TimeEntries", "Edit", [updates]);
+}
+
+async function handleGetDailyDigest(args: { user_email?: string }) {
+  const email = args.user_email || getCurrentUserEmail();
+  if (!email) {
+    throw new Error("user_email is required (and could not be automatically detected).");
+  }
+
+  const rowId = await resolvePeopleRowId(email);
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  // 1. Open tasks
+  const taskSel = buildSelector("Tasks", [
+    `[AssigneeEmail] = "${rowId}"`,
+    `IN([Status], {"To Do", "In Progress", "Blocked"})`
+  ]);
+
+  // 2. Calendar events for today
+  const eventSel = buildSelector("CalendarEvents", [
+    `[UserEmail] = "${email}"`,
+    `[StartAt] >= "${todayStr} 00:00:00"`,
+    `[StartAt] <= "${todayStr} 23:59:59"`
+  ]);
+
+  // 3. Time logged today
+  const timeSel = buildSelector("TimeEntries", [
+    `[CreatedBy] = "${email}"`,
+    `[StartAt] >= "${todayStr} 00:00:00"`
+  ]);
+
+  const [tasks, events, timeEntries] = await Promise.all([
+    appsheetAction("Tasks", "Find", [], taskSel ? { Selector: taskSel } : {}),
+    appsheetAction("CalendarEvents", "Find", [], eventSel ? { Selector: eventSel } : {}),
+    appsheetAction("TimeEntries", "Find", [], timeSel ? { Selector: timeSel } : {})
+  ]);
+
+  return {
+    user: { email, rowId },
+    today: todayStr,
+    open_tasks: tasks,
+    today_events: events,
+    today_time_entries: timeEntries
+  };
+}
+
 // ─── Server setup ───────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "manna-family-appsheet", version: "1.1.0" },
+  { name: "manna-family-appsheet", version: "1.2.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -782,6 +1005,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "get_holidays":        result = await handleGetHolidays(a as never); break;
       case "get_pto_policy":      result = await handleGetPtoPolicy(a as never); break;
       case "get_calendar_events": result = await handleGetCalendarEvents(a as never); break;
+      case "get_current_user":    result = await handleGetCurrentUser(); break;
+      case "start_timer":         result = await handleStartTimer(a as never); break;
+      case "stop_timer":          result = await handleStopTimer(a as never); break;
+      case "get_daily_digest":    result = await handleGetDailyDigest(a as never); break;
       default: throw new Error(`Unknown tool: ${name}`);
     }
 
@@ -805,7 +1032,7 @@ async function main() {
   }
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("✅ Manna Family AppSheet MCP Server running (v1.1.0)");
+  console.error("✅ Manna Family AppSheet MCP Server running (v1.2.0)");
 }
 
 main().catch((err) => {
