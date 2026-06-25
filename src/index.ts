@@ -1,5 +1,4 @@
 #!/usr/bin/env node
-import "dotenv/config";
 import { execSync } from "child_process";
 import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
@@ -542,6 +541,161 @@ Position values: Staff/Non-Professional, Entry Level Professional, Advanced Prof
     },
   },
   {
+    name: "get_active_timer",
+    description: "Check if the current user (or a specified user) has a running timer. Returns the active timer entry or null if none is running.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        created_by: { type: "string", description: "Email to check. Defaults to current user if omitted." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "search_tasks",
+    description: `Search tasks by name keyword. Use for:
+  - "Find the website task"
+  - "Search for tasks about budget"
+  - "Is there a task called onboarding?"
+
+Returns matching tasks regardless of status or assignee. Optionally filter by status or assignee.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        query: { type: "string", description: "Keyword or phrase to search in task names" },
+        status: { type: "string", enum: ["To Do", "In Progress", "Blocked", "Completed"], description: "Filter by status (optional)" },
+        assignee_email: { type: "string", description: "Filter by assignee email or name (optional)" },
+      },
+      required: ["query"],
+    },
+  },
+  {
+    name: "get_overdue_tasks",
+    description: `Get tasks that are past their due date and not yet completed. Use for:
+  - "What tasks are overdue?"
+  - "Show me everything that's past due"
+  - "What's late on the team?"
+
+Optionally filter by assignee or project.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        assignee_email: { type: "string", description: "Filter by assignee email or name (optional). Defaults to all team members." },
+        project_id: { type: "string", description: "Filter by ProjectID (optional)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "reassign_task",
+    description: `Change the assignee of a task. Use for:
+  - "Reassign T023 to Sarah"
+  - "Move the budget task from Jair to Maria"
+
+Resolves names to People Row IDs automatically.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        task_id: { type: "string", description: "TaskID to reassign" },
+        assignee_email: { type: "string", description: "New assignee email or name (Ref → People)" },
+      },
+      required: ["task_id", "assignee_email"],
+    },
+  },
+  {
+    name: "approve_pto_request",
+    description: `Approve a PTO request (manager action). Use for:
+  - "Approve PTO request PTO12345678"
+  - "Approve Sarah's time-off request"`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        request_id: { type: "string", description: "RequestID of the PTO request to approve" },
+        reviewed_by: { type: "string", description: "Email of approving manager. Defaults to current user if omitted." },
+        notes: { type: "string", description: "Optional notes or comments on the approval" },
+      },
+      required: ["request_id"],
+    },
+  },
+  {
+    name: "reject_pto_request",
+    description: `Reject a PTO request (manager action). Use for:
+  - "Reject PTO request PTO12345678"
+  - "Deny Sarah's request — we're short staffed that week"`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        request_id: { type: "string", description: "RequestID of the PTO request to reject" },
+        reviewed_by: { type: "string", description: "Email of reviewing manager. Defaults to current user if omitted." },
+        notes: { type: "string", description: "Reason for rejection (recommended)" },
+      },
+      required: ["request_id"],
+    },
+  },
+  {
+    name: "get_my_time_summary",
+    description: `Get a rolled-up time summary for a user — total hours by project, for a given period. Use for:
+  - "How many hours did I log this week?"
+  - "Show me my time by project for June"
+  - "What did I work on this month?"
+
+Defaults to the current week if no dates are provided.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        user_email: { type: "string", description: "Filter by user email. Defaults to current user if omitted." },
+        from_date: { type: "string", description: "Start date YYYY-MM-DD (optional, defaults to Monday of current week)" },
+        to_date: { type: "string", description: "End date YYYY-MM-DD (optional, defaults to today)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_weekly_digest",
+    description: "Retrieve a summary of the user's current week: open tasks, this week's calendar events, and hours logged Mon–today. Useful for Friday reviews or Monday planning.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        user_email: { type: "string", description: "Filter digest by email. Defaults to current user if omitted." },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_missions",
+    description: `Get missions (strategic objectives) from the Missions table. Use for:
+  - "What are our current missions?"
+  - "Show missions under MBC"
+  - "List all active missions"
+
+Missions link to Enterprises and can have tasks linked to them.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        enterprise_id: { type: "string", description: "Filter by EnterpriseID (optional)" },
+        name_search: { type: "string", description: "Partial mission name to search for (optional)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_initiatives",
+    description: `Get initiatives from the Initiatives table. Use for:
+  - "What initiatives are we running?"
+  - "Show initiatives under Mission X"
+  - "List all initiatives for MBC"
+
+Initiatives sit below Missions in the org hierarchy.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        mission_id: { type: "string", description: "Filter by MissionID (optional)" },
+        name_search: { type: "string", description: "Partial initiative name to search for (optional)" },
+      },
+      required: [],
+    },
+  },
+  {
     name: "get_calendar_events",
     description: `Get calendar events synced from Google Calendar. Use for:
   - "What's on my calendar this week?"
@@ -966,10 +1120,178 @@ async function handleGetDailyDigest(args: { user_email?: string }) {
   };
 }
 
+async function handleGetActiveTimer(args: { created_by?: string }) {
+  const email = args.created_by || getCurrentUserEmail();
+  if (!email) throw new Error("created_by is required (and could not be automatically detected).");
+  const selector = `Filter(TimeEntries, AND([CreatedBy] = "${email}", ISBLANK([EndAt])))`;
+  const timers = await appsheetAction("TimeEntries", "Find", [], { Selector: selector }) as Record<string, unknown>[];
+  if (!Array.isArray(timers) || timers.length === 0) return { active: false, timer: null };
+  return { active: true, timer: timers[0] };
+}
+
+async function handleSearchTasks(args: { query: string; status?: string; assignee_email?: string }) {
+  const filters: string[] = [`CONTAINS(LOWER([TaskName]), LOWER("${args.query}"))`];
+  if (args.status) filters.push(`[Status] = "${args.status}"`);
+  if (args.assignee_email) {
+    const rowId = await resolvePeopleRowId(args.assignee_email);
+    filters.push(`[AssigneeEmail] = "${rowId}"`);
+  }
+  return appsheetAction("Tasks", "Find", [], { Selector: buildSelector("Tasks", filters) });
+}
+
+async function handleGetOverdueTasks(args: { assignee_email?: string; project_id?: string }) {
+  const today = new Date().toISOString().split("T")[0];
+  const filters: string[] = [
+    `[DueDate] < "${today}"`,
+    `NOT(IN([Status], {"Completed"}))`,
+    `NOT(ISBLANK([DueDate]))`,
+  ];
+  if (args.assignee_email) {
+    const rowId = await resolvePeopleRowId(args.assignee_email);
+    filters.push(`[AssigneeEmail] = "${rowId}"`);
+  }
+  if (args.project_id) filters.push(`[ProjectID] = "${args.project_id}"`);
+  return appsheetAction("Tasks", "Find", [], { Selector: buildSelector("Tasks", filters) });
+}
+
+async function handleReassignTask(args: { task_id: string; assignee_email: string }) {
+  const rowId = await resolvePeopleRowId(args.assignee_email);
+  return appsheetAction("Tasks", "Edit", [{ TaskID: args.task_id, AssigneeEmail: rowId }]);
+}
+
+async function handleApprovePtoRequest(args: { request_id: string; reviewed_by?: string; notes?: string }) {
+  const reviewedBy = args.reviewed_by || getCurrentUserEmail();
+  if (!reviewedBy) throw new Error("reviewed_by is required (and could not be automatically detected).");
+  const row: Record<string, unknown> = {
+    RequestID: args.request_id,
+    Status: "Approved",
+    ReviewedBy: reviewedBy,
+    ReviewedAt: nowIso(),
+  };
+  if (args.notes) row.ReviewNotes = args.notes;
+  return appsheetAction("PTO_Requests", "Edit", [row]);
+}
+
+async function handleRejectPtoRequest(args: { request_id: string; reviewed_by?: string; notes?: string }) {
+  const reviewedBy = args.reviewed_by || getCurrentUserEmail();
+  if (!reviewedBy) throw new Error("reviewed_by is required (and could not be automatically detected).");
+  const row: Record<string, unknown> = {
+    RequestID: args.request_id,
+    Status: "Rejected",
+    ReviewedBy: reviewedBy,
+    ReviewedAt: nowIso(),
+  };
+  if (args.notes) row.ReviewNotes = args.notes;
+  return appsheetAction("PTO_Requests", "Edit", [row]);
+}
+
+function getMondayOfCurrentWeek(): string {
+  const now = new Date();
+  const day = now.getDay(); // 0=Sun, 1=Mon, ...
+  const diff = day === 0 ? -6 : 1 - day;
+  const monday = new Date(now);
+  monday.setDate(now.getDate() + diff);
+  return monday.toISOString().split("T")[0];
+}
+
+async function handleGetMyTimeSummary(args: { user_email?: string; from_date?: string; to_date?: string }) {
+  const email = args.user_email || getCurrentUserEmail();
+  if (!email) throw new Error("user_email is required (and could not be automatically detected).");
+  const fromDate = args.from_date ?? getMondayOfCurrentWeek();
+  const toDate   = args.to_date   ?? new Date().toISOString().split("T")[0];
+
+  const filters = [
+    `[UserEmail] = "${email}"`,
+    `[Date] >= "${fromDate}"`,
+    `[Date] <= "${toDate}"`,
+  ];
+  const rows = await appsheetAction("TimeFacts", "Find", [], { Selector: buildSelector("TimeFacts", filters) }) as Record<string, unknown>[];
+
+  // Roll up by project
+  const byProject: Record<string, number> = {};
+  let totalMinutes = 0;
+  if (Array.isArray(rows)) {
+    for (const row of rows) {
+      const project = (row.ProjectName as string) ?? "Unassigned";
+      const mins = Number(row.DurationMinutes ?? 0);
+      byProject[project] = (byProject[project] ?? 0) + mins;
+      totalMinutes += mins;
+    }
+  }
+
+  return {
+    user: email,
+    period: { from: fromDate, to: toDate },
+    total_hours: +(totalMinutes / 60).toFixed(2),
+    by_project: Object.entries(byProject).map(([project, minutes]) => ({
+      project,
+      hours: +(minutes / 60).toFixed(2),
+    })).sort((a, b) => b.hours - a.hours),
+    raw_rows: rows,
+  };
+}
+
+async function handleGetWeeklyDigest(args: { user_email?: string }) {
+  const email = args.user_email || getCurrentUserEmail();
+  if (!email) throw new Error("user_email is required (and could not be automatically detected).");
+
+  const rowId     = await resolvePeopleRowId(email);
+  const todayStr  = new Date().toISOString().split("T")[0];
+  const mondayStr = getMondayOfCurrentWeek();
+
+  const taskSel = buildSelector("Tasks", [
+    `[AssigneeEmail] = "${rowId}"`,
+    `IN([Status], {"To Do", "In Progress", "Blocked"})`,
+  ]);
+  const eventSel = buildSelector("CalendarEvents", [
+    `[UserEmail] = "${email}"`,
+    `[StartAt] >= "${mondayStr} 00:00:00"`,
+    `[StartAt] <= "${todayStr} 23:59:59"`,
+  ]);
+  const timeSel = buildSelector("TimeEntries", [
+    `[CreatedBy] = "${email}"`,
+    `[StartAt] >= "${mondayStr} 00:00:00"`,
+  ]);
+
+  const [tasks, events, timeEntries] = await Promise.all([
+    appsheetAction("Tasks",        "Find", [], taskSel  ? { Selector: taskSel  } : {}),
+    appsheetAction("CalendarEvents","Find", [], eventSel ? { Selector: eventSel } : {}),
+    appsheetAction("TimeEntries",  "Find", [], timeSel  ? { Selector: timeSel  } : {}),
+  ]);
+
+  return {
+    user: { email, rowId },
+    week: { from: mondayStr, to: todayStr },
+    open_tasks: tasks,
+    week_events: events,
+    week_time_entries: timeEntries,
+  };
+}
+
+async function handleGetMissions(args: { enterprise_id?: string; name_search?: string }) {
+  const filters: string[] = [];
+  if (args.enterprise_id) filters.push(`[EnterpriseID] = "${args.enterprise_id}"`);
+  if (args.name_search)   filters.push(`CONTAINS(LOWER([MissionName]), LOWER("${args.name_search}"))`);
+  const properties: Record<string, unknown> = {};
+  const sel = buildSelector("Missions", filters);
+  if (sel) properties.Selector = sel;
+  return appsheetAction("Missions", "Find", [], properties);
+}
+
+async function handleGetInitiatives(args: { mission_id?: string; name_search?: string }) {
+  const filters: string[] = [];
+  if (args.mission_id)  filters.push(`[MissionID] = "${args.mission_id}"`);
+  if (args.name_search) filters.push(`CONTAINS(LOWER([InitiativeName]), LOWER("${args.name_search}"))`);
+  const properties: Record<string, unknown> = {};
+  const sel = buildSelector("Initiatives", filters);
+  if (sel) properties.Selector = sel;
+  return appsheetAction("Initiatives", "Find", [], properties);
+}
+
 // ─── Server setup ───────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "manna-family-appsheet", version: "1.2.0" },
+  { name: "manna-family-appsheet", version: "1.3.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -1009,6 +1331,16 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "start_timer":         result = await handleStartTimer(a as never); break;
       case "stop_timer":          result = await handleStopTimer(a as never); break;
       case "get_daily_digest":    result = await handleGetDailyDigest(a as never); break;
+      case "get_active_timer":    result = await handleGetActiveTimer(a as never); break;
+      case "search_tasks":        result = await handleSearchTasks(a as never); break;
+      case "get_overdue_tasks":   result = await handleGetOverdueTasks(a as never); break;
+      case "reassign_task":       result = await handleReassignTask(a as never); break;
+      case "approve_pto_request": result = await handleApprovePtoRequest(a as never); break;
+      case "reject_pto_request":  result = await handleRejectPtoRequest(a as never); break;
+      case "get_my_time_summary": result = await handleGetMyTimeSummary(a as never); break;
+      case "get_weekly_digest":   result = await handleGetWeeklyDigest(a as never); break;
+      case "get_missions":        result = await handleGetMissions(a as never); break;
+      case "get_initiatives":     result = await handleGetInitiatives(a as never); break;
       default: throw new Error(`Unknown tool: ${name}`);
     }
 
@@ -1032,7 +1364,7 @@ async function main() {
   }
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("✅ Manna Family AppSheet MCP Server running (v1.2.0)");
+  console.error("✅ Manna Family AppSheet MCP Server running (v1.3.0)");
 }
 
 main().catch((err) => {

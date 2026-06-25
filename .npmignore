@@ -1,0 +1,8 @@
+src/
+.env
+.env.example
+setup.sh
+tsconfig.json
+manna-family-appsheet-mcp-schema.md
+.claude/
+*.map
