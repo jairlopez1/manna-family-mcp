@@ -1,0 +1,265 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Manna Family Assistant</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@n8n/chat/dist/style.css" />
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0f1117;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── Top bar ── */
+    .topbar {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 24px;
+      height: 56px;
+      background: #0f1117;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.08);
+      flex-shrink: 0;
+      z-index: 10;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .logo-mark {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      background: #5B8A72;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 15px;
+      font-weight: 600;
+      color: #fff;
+      letter-spacing: -0.5px;
+    }
+
+    .logo-info .name {
+      font-size: 15px;
+      font-weight: 500;
+      color: #f0f0f0;
+      line-height: 1.2;
+    }
+
+    .logo-info .sub {
+      font-size: 11px;
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .status {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.4);
+    }
+
+    .status-dot {
+      width: 7px;
+      height: 7px;
+      border-radius: 50%;
+      background: #4ade80;
+    }
+
+    /* ── Chat container ── */
+    #n8n-chat {
+      flex: 1;
+      display: flex;
+      flex-direction: column;
+    }
+
+    /* ── n8n chat overrides ── */
+    :root {
+      --chat--color-primary: #5B8A72;
+      --chat--color-primary-shade-50: #4e7a65;
+      --chat--color-primary-shade-100: #3d6050;
+      --chat--color-secondary: #5B8A72;
+      --chat--color-secondary-shade-50: #4e7a65;
+      --chat--color-white: #f0f0f0;
+      --chat--color-light: rgba(255, 255, 255, 0.06);
+      --chat--color-light-shade-50: rgba(255, 255, 255, 0.1);
+      --chat--color-light-shade-100: rgba(255, 255, 255, 0.14);
+      --chat--color-medium: rgba(255, 255, 255, 0.2);
+      --chat--color-dark: #0f1117;
+      --chat--color-disabled: rgba(255, 255, 255, 0.2);
+      --chat--color-typing: rgba(255, 255, 255, 0.5);
+
+      --chat--spacing: 1rem;
+      --chat--border-radius: 10px;
+      --chat--transition-duration: 0.15s;
+
+      --chat--window--width: 100%;
+      --chat--window--height: 100%;
+
+      --chat--header--background: #0f1117;
+      --chat--header--color: #f0f0f0;
+      --chat--header--padding: 0;
+      --chat--header-height: 0px;
+
+      --chat--message--font-size: 14px;
+      --chat--message--padding: 10px 14px;
+      --chat--message--border-radius: 10px;
+      --chat--message--bot--background: rgba(255, 255, 255, 0.07);
+      --chat--message--bot--color: rgba(255, 255, 255, 0.88);
+      --chat--message--bot--border: 1px solid rgba(255, 255, 255, 0.1);
+      --chat--message--user--background: #5B8A72;
+      --chat--message--user--color: #fff;
+      --chat--message--pre--background: rgba(0, 0, 0, 0.3);
+
+      --chat--textarea--height: 50px;
+      --chat--input--background: rgba(255, 255, 255, 0.07);
+      --chat--input--border-color-default: rgba(255, 255, 255, 0.12);
+      --chat--input--border-color-active: rgba(91, 138, 114, 0.6);
+      --chat--input--placeholder--color: rgba(255, 255, 255, 0.3);
+      --chat--input--send--button--background: #5B8A72;
+      --chat--input--send--button--background--hover: #4e7a65;
+      --chat--input--send--button--color: #fff;
+      --chat--input--font-color: rgba(255, 255, 255, 0.88);
+
+      --chat--toggle--background: #5B8A72;
+      --chat--toggle--hover--background: #4e7a65;
+      --chat--toggle--active--background: #3d6050;
+      --chat--toggle--color: #fff;
+      --chat--toggle--size: 48px;
+    }
+
+    /* Force full-height layout */
+    .n8n-chat {
+      height: 100% !important;
+      background: #0f1117 !important;
+    }
+
+    .n8n-chat .chat-window {
+      width: 100% !important;
+      height: 100% !important;
+      max-width: 760px !important;
+      margin: 0 auto !important;
+      border-radius: 0 !important;
+      border: none !important;
+      box-shadow: none !important;
+      background: #0f1117 !important;
+    }
+
+    /* Hide the default n8n header since we have our own topbar */
+    .n8n-chat .chat-window-header {
+      display: none !important;
+    }
+
+    .n8n-chat .chat-messages-list {
+      background: #0f1117 !important;
+      padding: 24px 20px !important;
+    }
+
+    .n8n-chat .chat-input {
+      background: #0f1117 !important;
+      border-top: 1px solid rgba(255, 255, 255, 0.08) !important;
+      padding: 14px 20px 18px !important;
+    }
+
+    .chat-inputs {
+      background: rgba(255, 255, 255, 0.07) !important;
+      border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      border-radius: 10px !important;
+    }
+
+    .chat-inputs textarea {
+      background: transparent !important;
+      color: rgba(255, 255, 255, 0.88) !important;
+    }
+
+    .chat-inputs textarea::placeholder {
+      color: rgba(255, 255, 255, 0.3) !important;
+    }
+
+    .n8n-chat .chat-message-bot .chat-message-text {
+      background: rgba(255, 255, 255, 0.07) !important;
+      border: 1px solid rgba(255, 255, 255, 0.1) !important;
+      color: rgba(255, 255, 255, 0.88) !important;
+    }
+
+    .n8n-chat .chat-message-user .chat-message-text {
+      background: #5B8A72 !important;
+      color: #fff !important;
+    }
+
+    .n8n-chat .chat-input-wrapper {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    /* Welcome screen */
+    .n8n-chat .chat-welcome-screen {
+      background: #0f1117 !important;
+    }
+
+    .n8n-chat .chat-welcome-screen-title {
+      color: #f0f0f0 !important;
+    }
+
+    .n8n-chat .chat-welcome-screen-subtitle {
+      color: rgba(255, 255, 255, 0.5) !important;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="topbar">
+    <div class="logo">
+      <div class="logo-mark">M</div>
+      <div class="logo-info">
+        <div class="name">Manna Family</div>
+        <div class="sub">Team Assistant</div>
+      </div>
+    </div>
+    <div class="status">
+      <div class="status-dot"></div>
+      Online
+    </div>
+  </div>
+
+  <div id="n8n-chat"></div>
+
+  <script type="module">
+    import { createChat } from 'https://cdn.jsdelivr.net/npm/@n8n/chat/dist/chat.bundle.es.js';
+
+    createChat({
+      webhookUrl: 'https://jairlopez.app.n8n.cloud/webhook/6a1a30fd-3755-47a4-b751-8ea1e1234dc8/chat',
+      target: '#n8n-chat',
+      mode: 'fullscreen',
+      showWelcomeScreen: false,
+      initialMessages: [
+        "Hi! I'm your Manna Family assistant.",
+        "What is your work email address?"
+      ],
+      i18n: {
+        en: {
+          title: 'Manna Family Assistant',
+          subtitle: 'Ask me about tasks, time, PTO, and more.',
+          footer: '',
+          getStarted: 'Start chatting',
+          inputPlaceholder: 'Ask me anything…',
+          closeButtonTooltip: '',
+        }
+      },
+      metadata: {},
+      chatInputKey: 'chatInput',
+      chatSessionKey: 'sessionId',
+    });
+  </script>
+</body>
+</html>

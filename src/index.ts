@@ -18,14 +18,16 @@ let cachedUserEmail: string | null | undefined = undefined;
 
 function getCurrentUserEmail(): string | null {
   if (cachedUserEmail !== undefined) return cachedUserEmail;
-  try {
-    const email = execSync("git config user.email", { encoding: "utf8" }).trim();
-    if (email && email.includes("@")) {
-      cachedUserEmail = email;
-      return email;
+  for (const cmd of ["git config --global user.email", "git config user.email"]) {
+    try {
+      const email = execSync(cmd, { encoding: "utf8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+      if (email && email.includes("@")) {
+        cachedUserEmail = email;
+        return email;
+      }
+    } catch {
+      // try next
     }
-  } catch {
-    // ignore
   }
   cachedUserEmail = null;
   return null;
@@ -190,7 +192,7 @@ Read-only — never write: TimeFacts, PTO_Policy, OrgHolidays, Resources`,
   // ── High-level convenience tools ─────────────────────────────────────────
   {
     name: "get_current_user",
-    description: "Retrieve the email and database profile of the currently logged-in developer based on local Git configuration.",
+    description: "Retrieve the email and database profile of the current user based on Git configuration. ALWAYS call this at the start of every conversation. If it returns no email, immediately ask the user: 'What is your work email (@wearemanna.org)?' before doing anything else. Never assume or default to another person's email.",
     inputSchema: {
       type: "object",
       properties: {},
@@ -990,7 +992,11 @@ async function handleGetCalendarEvents(args: {
 async function handleGetCurrentUser() {
   const email = getCurrentUserEmail();
   if (!email) {
-    return { email: null, profile: null };
+    return {
+      email: null,
+      profile: null,
+      warning: "No work email detected. Git is not configured on this machine. Ask the user for their @wearemanna.org email before proceeding with any task."
+    };
   }
   try {
     const people = await handleFindPerson({ query: email }) as Record<string, unknown>[];
