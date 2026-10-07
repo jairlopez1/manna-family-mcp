@@ -6,6 +6,15 @@
 
 set -e
 
+# When piped (curl | bash), stdin is the pipe — re-download and run with /dev/tty
+if [ ! -t 0 ]; then
+  TMP=$(mktemp /tmp/manna-setup.XXXXXX.sh)
+  curl -fsSL "https://raw.githubusercontent.com/jairlopez1/manna-family-mcp/main/setup.sh" -o "$TMP"
+  bash "$TMP" < /dev/tty
+  rm -f "$TMP"
+  exit $?
+fi
+
 BOLD="\033[1m"
 GREEN="\033[0;32m"
 YELLOW="\033[1;33m"
