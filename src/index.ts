@@ -38,6 +38,7 @@ const ALL_TABLES = [
   "Enterprises", "Missions", "Initiatives",
   "PTO_Requests", "PTO_Policy", "Resources",
   "OrgHolidays", "CalendarEvents", "TimeFacts",
+  "Rocks", "VisionPictures",
 ] as const;
 
 type TableName = typeof ALL_TABLES[number];
@@ -102,7 +103,7 @@ const tools: Tool[] = [
     name: "find_records",
     description: `Query records from any Manna Family AppSheet table.
 
-Available tables: Projects, Tasks, People, Comments, TimeEntries, Enterprises, Missions, Initiatives, PTO_Requests, PTO_Policy, Resources, OrgHolidays, CalendarEvents, TimeFacts
+Available tables: Projects, Tasks, People, Comments, TimeEntries, Enterprises, Missions, Initiatives, PTO_Requests, PTO_Policy, Resources, OrgHolidays, CalendarEvents, TimeFacts, Rocks, VisionPictures
 
 Use selector for filtering with AppSheet expressions:
   - All records: omit selector
@@ -694,6 +695,129 @@ Initiatives sit below Missions in the org hierarchy.`,
         mission_id: { type: "string", description: "Filter by MissionID (optional)" },
         name_search: { type: "string", description: "Partial initiative name to search for (optional)" },
       },
+      required: [],
+    },
+  },
+  {
+    name: "get_rocks",
+    description: `Get Rocks (quarterly 90-day goals) from the Rocks table. Use for:
+  - "What are our rocks this quarter?"
+  - "Show rocks for MBC Q3 2026"
+  - "What are Jair's rocks?"
+  - "List all organizational rocks"
+
+Rocks follow EOS (Entrepreneurial Operating System) methodology.
+RockID format: R-{EnterpriseCode}-{Year}Q{Quarter}-{sequence}
+Status values: On Track | Off Track | Done | Missed
+Scope values: Organizational Rock | Individual Rock`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        enterprise_id:   { type: "string", description: "Filter by EnterpriseID (optional)" },
+        assignee_email:  { type: "string", description: "Filter by assignee email or name (optional)" },
+        quarter:         { type: "string", enum: ["Q1", "Q2", "Q3", "Q4"], description: "Filter by quarter (optional)" },
+        year:            { type: "string", description: "Filter by year e.g. 2026 (optional)" },
+        status:          { type: "string", enum: ["On Track", "Off Track", "Done", "Missed"], description: "Filter by status (optional)" },
+        scope:           { type: "string", enum: ["Organizational Rock", "Individual Rock"], description: "Filter by scope (optional)" },
+        name_search:     { type: "string", description: "Partial rock name to search for (optional)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_rock_detail",
+    description: `Get full detail for a specific Rock by its RockID. Use for:
+  - "Tell me about rock R-EP-2026Q3-001"
+  - "What's the success criteria for that rock?"`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        rock_id: { type: "string", description: "RockID (e.g. R-EP-2026Q3-001)" },
+      },
+      required: ["rock_id"],
+    },
+  },
+  {
+    name: "get_overdue_rocks",
+    description: `Get Rocks that are past their due date and not yet Done. Use for:
+  - "What rocks are overdue?"
+  - "Show past-due rocks for MBC"
+  - "Which rocks did we miss?"`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        enterprise_id:  { type: "string", description: "Filter by EnterpriseID (optional)" },
+        assignee_email: { type: "string", description: "Filter by assignee email or name (optional)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "create_rock",
+    description: `Create a new Rock (quarterly goal). The RockID is generated server-side — never supply one.
+
+BEFORE calling:
+  1. Know the EnterpriseID — call list_enterprises if unsure
+  2. Know the Quarter (Q1–Q4) and Year
+  3. Know the assignee email if assigning to a person
+
+Status defaults to "On Track". Scope defaults to "Individual Rock".`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        rock_name:        { type: "string", description: "Name of the Rock" },
+        enterprise_id:    { type: "string", description: "EnterpriseID this Rock belongs to" },
+        quarter:          { type: "string", enum: ["Q1", "Q2", "Q3", "Q4"], description: "Quarter (Q1–Q4)" },
+        year:             { type: "string", description: "Year e.g. 2026" },
+        scope:            { type: "string", enum: ["Organizational Rock", "Individual Rock"], description: "Defaults to Individual Rock" },
+        assignee_email:   { type: "string", description: "Email or name of assignee (optional)" },
+        mission_id:       { type: "string", description: "MissionID to link (optional)" },
+        due_date:         { type: "string", description: "Due date YYYY-MM-DD (optional)" },
+        success_criteria: { type: "string", description: "What does Done look like? (optional)" },
+      },
+      required: ["rock_name", "enterprise_id", "quarter", "year"],
+    },
+  },
+  {
+    name: "update_rock_status",
+    description: `Update the status of a Rock. Use for:
+  - "Mark rock R-EP-2026Q3-001 as Done"
+  - "Set that rock to Off Track"
+  - "We completed rock R-MBC-2026Q3-005"
+
+Status values: On Track | Off Track | Done | Missed`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        rock_id:        { type: "string", description: "RockID to update" },
+        status:         { type: "string", enum: ["On Track", "Off Track", "Done", "Missed"] },
+        updated_by:     { type: "string", description: "Email of person updating. Defaults to current user if omitted." },
+      },
+      required: ["rock_id", "status"],
+    },
+  },
+  {
+    name: "get_enterprise_vision",
+    description: `Get the vision statement and vision pictures for one or all enterprises. Use for:
+  - "What's the vision for MBC?"
+  - "Show me our org vision"
+  - "What does our vision picture look like for EP?"
+
+Returns VisionStatement from Enterprises and any VisionPictures records.`,
+    inputSchema: {
+      type: "object",
+      properties: {
+        enterprise_id: { type: "string", description: "EnterpriseID (optional — omit for all enterprises)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "list_enterprises",
+    description: `List all enterprises with their IDs, names, and codes. Use this when you need an EnterpriseID for create_rock or filtering other tools.`,
+    inputSchema: {
+      type: "object",
+      properties: {},
       required: [],
     },
   },
@@ -1294,10 +1418,139 @@ async function handleGetInitiatives(args: { mission_id?: string; name_search?: s
   return appsheetAction("Initiatives", "Find", [], properties);
 }
 
+async function handleGetRocks(args: {
+  enterprise_id?: string; assignee_email?: string; quarter?: string;
+  year?: string; status?: string; scope?: string; name_search?: string;
+}) {
+  const filters: string[] = [];
+  if (args.enterprise_id)  filters.push(`[EnterpriseID] = "${args.enterprise_id}"`);
+  if (args.quarter)        filters.push(`[Quarter] = "${args.quarter}"`);
+  if (args.year)           filters.push(`[Year] = "${args.year}"`);
+  if (args.status)         filters.push(`[Status] = "${args.status}"`);
+  if (args.scope)          filters.push(`[Scope] = "${args.scope}"`);
+  if (args.name_search)    filters.push(`CONTAINS(LOWER([RockName]), LOWER("${args.name_search}"))`);
+  if (args.assignee_email) {
+    const rowId = await resolvePeopleRowId(args.assignee_email);
+    filters.push(`[AssigneeEmail] = "${rowId}"`);
+  }
+  const properties: Record<string, unknown> = {};
+  const sel = buildSelector("Rocks", filters);
+  if (sel) properties.Selector = sel;
+  return appsheetAction("Rocks", "Find", [], properties);
+}
+
+async function handleGetRockDetail(args: { rock_id: string }) {
+  return appsheetAction("Rocks", "Find", [], {
+    Selector: `Filter(Rocks, [RockID] = "${args.rock_id}")`,
+  });
+}
+
+async function handleGetOverdueRocks(args: { enterprise_id?: string; assignee_email?: string }) {
+  const today = new Date().toISOString().split("T")[0];
+  const filters: string[] = [
+    `[DueDate] < "${today}"`,
+    `NOT(ISBLANK([DueDate]))`,
+    `NOT(IN([Status], {"Done"}))`,
+  ];
+  if (args.enterprise_id) filters.push(`[EnterpriseID] = "${args.enterprise_id}"`);
+  if (args.assignee_email) {
+    const rowId = await resolvePeopleRowId(args.assignee_email);
+    filters.push(`[AssigneeEmail] = "${rowId}"`);
+  }
+  return appsheetAction("Rocks", "Find", [], { Selector: buildSelector("Rocks", filters) });
+}
+
+async function handleCreateRock(args: {
+  rock_name: string; enterprise_id: string; quarter: string; year: string;
+  scope?: string; assignee_email?: string; mission_id?: string;
+  due_date?: string; success_criteria?: string;
+}) {
+  // Get enterprise to derive its code for the RockID
+  const enterprises = await appsheetAction("Enterprises", "Find", [], {
+    Selector: `Filter(Enterprises, [EnterpriseID] = "${args.enterprise_id}")`,
+  }) as Record<string, unknown>[];
+  if (!Array.isArray(enterprises) || enterprises.length === 0) {
+    throw new Error(`Enterprise not found: ${args.enterprise_id}. Call list_enterprises to get valid IDs.`);
+  }
+  const enterprise = enterprises[0];
+  const enterpriseCode = (
+    enterprise.EnterpriseCode ?? enterprise.EnterpriseName ?? args.enterprise_id
+  ) as string;
+
+  // Find existing rocks for this enterprise/year/quarter to avoid ID collision
+  const existingRocks = await appsheetAction("Rocks", "Find", [], {
+    Selector: buildSelector("Rocks", [
+      `[EnterpriseID] = "${args.enterprise_id}"`,
+      `[Year] = "${args.year}"`,
+      `[Quarter] = "${args.quarter}"`,
+    ]),
+  }) as Record<string, unknown>[];
+
+  const prefix = `R-${enterpriseCode}-${args.year}${args.quarter}-`;
+  let maxSeq = 0;
+  if (Array.isArray(existingRocks)) {
+    for (const rock of existingRocks) {
+      const id = rock.RockID as string;
+      if (id && id.startsWith(prefix)) {
+        const seq = parseInt(id.slice(prefix.length), 10);
+        if (!isNaN(seq) && seq > maxSeq) maxSeq = seq;
+      }
+    }
+  }
+
+  const rockId = `${prefix}${String(maxSeq + 1).padStart(3, "0")}`;
+  const row: Record<string, unknown> = {
+    RockID:        rockId,
+    RockName:      args.rock_name,
+    Scope:         args.scope ?? "Individual Rock",
+    EnterpriseID:  args.enterprise_id,
+    Quarter:       args.quarter,
+    Year:          args.year,
+    Status:        "On Track",
+    StatusUpdated: nowIso(),
+  };
+  if (args.assignee_email)   row.AssigneeEmail    = await resolvePeopleRowId(args.assignee_email);
+  if (args.mission_id)       row.MissionID        = args.mission_id;
+  if (args.due_date)         row.DueDate          = args.due_date;
+  if (args.success_criteria) row.SuccessCriteria  = args.success_criteria;
+
+  return appsheetAction("Rocks", "Add", [row]);
+}
+
+async function handleUpdateRockStatus(args: { rock_id: string; status: string; updated_by?: string }) {
+  const updatedBy = args.updated_by || getCurrentUserEmail() || "";
+  return appsheetAction("Rocks", "Edit", [{
+    RockID:            args.rock_id,
+    Status:            args.status,
+    StatusUpdated:     nowIso(),
+    StatusUpdatedBy:   updatedBy,
+  }]);
+}
+
+async function handleGetEnterpriseVision(args: { enterprise_id?: string }) {
+  const enterpriseProperties: Record<string, unknown> = {};
+  if (args.enterprise_id) {
+    enterpriseProperties.Selector = `Filter(Enterprises, [EnterpriseID] = "${args.enterprise_id}")`;
+  }
+  const visionProperties: Record<string, unknown> = {};
+  if (args.enterprise_id) {
+    visionProperties.Selector = `Filter(VisionPictures, [EnterpriseID] = "${args.enterprise_id}")`;
+  }
+  const [enterprises, visionPictures] = await Promise.all([
+    appsheetAction("Enterprises", "Find", [], enterpriseProperties),
+    appsheetAction("VisionPictures", "Find", [], visionProperties).catch(() => []),
+  ]);
+  return { enterprises, visionPictures };
+}
+
+async function handleListEnterprises() {
+  return appsheetAction("Enterprises", "Find", [], {});
+}
+
 // ─── Server setup ───────────────────────────────────────────────────────────
 
 const server = new Server(
-  { name: "manna-family-appsheet", version: "1.3.0" },
+  { name: "manna-family-appsheet", version: "1.4.0" },
   { capabilities: { tools: {} } }
 );
 
@@ -1345,8 +1598,15 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       case "reject_pto_request":  result = await handleRejectPtoRequest(a as never); break;
       case "get_my_time_summary": result = await handleGetMyTimeSummary(a as never); break;
       case "get_weekly_digest":   result = await handleGetWeeklyDigest(a as never); break;
-      case "get_missions":        result = await handleGetMissions(a as never); break;
-      case "get_initiatives":     result = await handleGetInitiatives(a as never); break;
+      case "get_missions":          result = await handleGetMissions(a as never); break;
+      case "get_initiatives":       result = await handleGetInitiatives(a as never); break;
+      case "get_rocks":             result = await handleGetRocks(a as never); break;
+      case "get_rock_detail":       result = await handleGetRockDetail(a as never); break;
+      case "get_overdue_rocks":     result = await handleGetOverdueRocks(a as never); break;
+      case "create_rock":           result = await handleCreateRock(a as never); break;
+      case "update_rock_status":    result = await handleUpdateRockStatus(a as never); break;
+      case "get_enterprise_vision": result = await handleGetEnterpriseVision(a as never); break;
+      case "list_enterprises":      result = await handleListEnterprises(); break;
       default: throw new Error(`Unknown tool: ${name}`);
     }
 
@@ -1370,7 +1630,7 @@ async function main() {
   }
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("✅ Manna Family AppSheet MCP Server running (v1.3.0)");
+  console.error("✅ Manna Family AppSheet MCP Server running (v1.4.0)");
 }
 
 main().catch((err) => {
